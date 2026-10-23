@@ -1,0 +1,27 @@
+name: Tracked file safety
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject sensitive tracked files
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git ls-files | grep -Ei '(^|/)(\.env($|\.)|node_modules/|\.next/|\.vercel/|.*\.(pem|p8|p12|key)$)' | grep -Ev '(^|/)\.env(\.[^/]*)?\.example$'; then
+            echo "::error::Sensitive or generated file tracked"
+            exit 1
+          fi
+      - name: Reject obvious embedded live credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git grep -I -n -E -- 'sk_live_[A-Za-z0-9]{12,}|whsec_[A-Za-z0-9]{12,}|sb_secret_[A-Za-z0-9]{12,}|BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY' -- ':!*.md' ':!*.example'; then
+            echo "::error::Potential live secret found; investigate and rotate"
+            exit 1
+          fi
+          code=$?
+          if [ "$code" -ne 1 ]; then exit "$code"; fi
